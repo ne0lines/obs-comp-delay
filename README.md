@@ -1,7 +1,5 @@
 # OBS Comp Delay
 
-![OBS Comp Delay hero: stream delay protects against stream sniping](assets/readme-hero.png)
-
 OBS Comp Delay is a Windows-first OBS Studio plugin for adding stream delay while OBS keeps streaming.
 
 It is built for live productions where you may need to protect a game, event, or competition from stream sniping without stopping the broadcast.
@@ -38,38 +36,31 @@ When you click `Deactivate delay`, the plugin can either return live immediately
 
 The installer places the plugin in the normal OBS Studio plugin folders.
 
-## OBS Setup
+## Setup Guide
 
-You only need to create two extra scenes. Your normal content scene already exists and will be used as `Source scene`.
+### 1. Install the plugin and restart OBS
 
-### 1. Create `Delay Transition Scene`
+<img src="assets/setup-step-1-install.png" alt="OBS Comp Delay settings window after installation" width="720">
 
-This scene is shown live while delay is being activated. Use it for a waiting screen, break screen, sponsor screen, or countdown.
+### 2. Create the scenes 'Delay Transition Scene' and 'Delay Scene'
 
-If you want a countdown, add an OBS text source that contains:
+<img src="assets/setup-step-2-scenes.png" alt="OBS Scenes dock with Delay Transition Scene and Delay Scene" width="360">
 
-```text
-Back in %delay_countdown%
-```
+### 3. Add the source 'Comp Delay Playback' to the 'Delay Scene' you created in step 2
 
-### 2. Create `Delay scene`
+<img src="assets/setup-step-3-playback-source.png" alt="OBS source menu showing Comp Delay Playback" width="540">
 
-This scene plays the delayed output.
+### 4. Add a 'Text (GDI+) Source' to the 'Delay Transition Scene' you created in step 2 and insert the text "Back in %delay_countdown%s"
 
-Add a source of type `Comp Delay Playback` to this scene.
+<img src="assets/setup-step-4-countdown-text.png" alt="OBS text source properties with Back in %delay_countdown%s" width="520">
 
-## Plugin Setup
+### 5. Go to the menu Tools -> Comp Delay Settings to select your scenes and specify the length of your delay
 
-Open `Tools` -> `Comp Delay Settings` and choose:
+<img src="assets/setup-step-5-settings.png" alt="OBS Comp Delay settings window showing scenes, encoders, and delay length" width="720">
 
-- `Source scene`
-- `Delay Transition Scene`
-- `Delay scene`
-- Video encoder
-- Audio encoder
-- Delay in seconds
+### 6. Click the button 'Activate delay' in the Controls dock to activate.
 
-Click `Apply` after changing settings if the dialog shows unapplied changes.
+<img src="assets/setup-step-6-activate-delay.png" alt="OBS Controls dock showing the Activate delay button" width="300">
 
 ## How To Use
 
