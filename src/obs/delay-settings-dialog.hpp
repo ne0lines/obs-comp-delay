@@ -9,6 +9,7 @@
 class QComboBox;
 class QLabel;
 class QProgressBar;
+class QPushButton;
 class QSpinBox;
 class QTimer;
 
@@ -26,7 +27,8 @@ public:
 
 private:
 	void applyClicked();
-	void goLiveClicked();
+	void markDirty();
+	void setDirty(bool dirty);
 	void setComboText(QComboBox *combo, const std::string &text);
 	void setComboData(QComboBox *combo, const std::string &data, const std::string &missingLabel);
 
@@ -40,6 +42,9 @@ private:
 	QLabel *status_ = nullptr;
 	QLabel *error_ = nullptr;
 	QProgressBar *bufferProgress_ = nullptr;
+	QPushButton *apply_ = nullptr;
+	bool dirty_ = false;
+	bool syncing_ = false;
 };
 
 } // namespace comp_delay

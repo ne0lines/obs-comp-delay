@@ -62,24 +62,21 @@ DelaySettingsDialog::DelaySettingsDialog(DelayController &controller, QWidget *p
 	layout->addWidget(error_);
 
 	auto *buttons = new QHBoxLayout();
-	auto *refresh = new QPushButton("Refresh", this);
-	auto *activateDelay = new QPushButton("Activate delay", this);
-	auto *deactivateDelay = new QPushButton("Deactivate delay", this);
+	apply_ = new QPushButton("Apply", this);
 	auto *close = new QPushButton("Close", this);
-	buttons->addWidget(refresh);
 	buttons->addStretch();
-	buttons->addWidget(activateDelay);
-	buttons->addWidget(deactivateDelay);
+	buttons->addWidget(apply_);
 	buttons->addWidget(close);
 	layout->addLayout(buttons);
 
-	connect(refresh, &QPushButton::clicked, this, [this]() {
-		refreshScenes();
-		refreshEncoders();
-	});
-	connect(activateDelay, &QPushButton::clicked, this, [this]() { applyClicked(); });
-	connect(deactivateDelay, &QPushButton::clicked, this, [this]() { goLiveClicked(); });
+	connect(apply_, &QPushButton::clicked, this, [this]() { applyClicked(); });
 	connect(close, &QPushButton::clicked, this, [this]() { hide(); });
+	connect(sourceScene_, &QComboBox::currentTextChanged, this, [this]() { markDirty(); });
+	connect(transitionScene_, &QComboBox::currentTextChanged, this, [this]() { markDirty(); });
+	connect(delayScene_, &QComboBox::currentTextChanged, this, [this]() { markDirty(); });
+	connect(videoEncoder_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() { markDirty(); });
+	connect(audioEncoder_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() { markDirty(); });
+	connect(delaySeconds_, QOverload<int>::of(&QSpinBox::valueChanged), this, [this]() { markDirty(); });
 
 	refreshScenes();
 	refreshEncoders();
@@ -147,6 +144,7 @@ DelaySettings DelaySettingsDialog::currentSettings() const
 
 void DelaySettingsDialog::syncFromController()
 {
+	syncing_ = true;
 	const DelaySettings &settings = controller_.settings();
 	setComboText(sourceScene_, settings.sourceSceneName);
 	setComboText(transitionScene_, settings.transitionSceneName);
@@ -156,21 +154,28 @@ void DelaySettingsDialog::syncFromController()
 	setComboData(audioEncoder_, settings.audioEncoderName, "Unavailable audio encoder");
 
 	delaySeconds_->setValue(static_cast<int>(settings.targetDelaySeconds));
+	syncing_ = false;
+	setDirty(false);
 }
 
 void DelaySettingsDialog::applyClicked()
 {
 	controller_.applySettings(currentSettings());
+	setDirty(false);
 	updateStatus();
 }
 
-void DelaySettingsDialog::goLiveClicked()
+void DelaySettingsDialog::markDirty()
 {
-	DelaySettings settings = currentSettings();
-	settings.targetDelaySeconds = 0;
-	delaySeconds_->setValue(0);
-	controller_.applySettings(settings);
-	updateStatus();
+	if (!syncing_)
+		setDirty(true);
+}
+
+void DelaySettingsDialog::setDirty(bool dirty)
+{
+	dirty_ = dirty;
+	if (apply_)
+		apply_->setEnabled(dirty_);
 }
 
 void DelaySettingsDialog::updateStatus()

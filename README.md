@@ -9,6 +9,7 @@ The plugin delays one selected source scene. When you activate delay, OBS immedi
 - Adds up to `300` seconds of delay without stopping the OBS streaming output.
 - Uses the delay value configured in `Tools` -> `Comp Delay Settings`.
 - Adds an `Activate delay` / `Deactivate delay` button to OBS' `Controls` dock.
+- Shows the Controls button in green when delay is inactive and red when delay is active.
 - Provides hotkeys for `Comp Delay: Activate delay` and `Comp Delay: Deactivate delay`.
 - Lets you choose the video and audio encoders used by the delay buffer.
 - Supports a transition-scene countdown text token: `%delay_countdown%`.
@@ -46,13 +47,16 @@ Then open `Tools` -> `Comp Delay Settings` and select:
 - Audio encoder
 - Delay in seconds
 
+Click `Apply` after changing settings. The button is only needed when the dialog has unapplied changes.
+
 ## How To Use
 
 1. Set the wanted delay in `Comp Delay Settings`.
-2. Click `Activate delay` in OBS' `Controls` dock, the settings dialog, or your assigned hotkey.
-3. OBS switches to the transition scene immediately.
-4. When the configured delay time has passed, OBS switches to the delay scene automatically.
-5. Click `Deactivate delay` to drop the buffer and return to the source scene live.
+2. Click `Apply` if the settings dialog shows unapplied changes.
+3. Click `Activate delay` in OBS' `Controls` dock, or use your assigned hotkey.
+4. OBS switches to the transition scene immediately.
+5. When the configured delay has filled, OBS switches to the delay scene automatically.
+6. Click `Deactivate delay` to drop the buffer and return to the source scene live.
 
 Changing the delay while it is already active uses the same configured delay workflow. The plugin shows the transition scene while it adjusts the buffer, then returns to delayed playback.
 
@@ -67,6 +71,8 @@ Delay starts in %delay_countdown%
 ```
 
 While the transition scene is active, the plugin replaces `%delay_countdown%` with the remaining buffer-fill time in whole seconds. When the transition is done, the original text template is restored.
+
+The countdown starts when the plugin activates the transition scene as part of `Activate delay`. The delay scene switch is based on the encoded buffer reaching the configured delay, so the plugin does not switch early if the buffer is not ready yet.
 
 ## Audio
 
@@ -92,7 +98,11 @@ No. The plugin uses the delay value from `Comp Delay Settings`. This keeps opera
 
 **Can I change the delay while it is active?**
 
-Yes. Change the value in `Comp Delay Settings` and activate/apply it again. The plugin will use the transition scene while it adjusts.
+Yes. Change the value in `Comp Delay Settings` and click `Apply`. The plugin will use the transition scene while it adjusts.
+
+**Does manually switching to the transition scene start delay?**
+
+No. Delay starts from `Activate delay`, because the plugin also has to start capture and fill the encoded buffer.
 
 **What happens if the buffer fails or a scene is missing?**
 

@@ -43,6 +43,16 @@ constexpr const char *kHotkeyGoLiveDescription = "Comp Delay: Deactivate delay";
 constexpr const char *kActivateDelayText = "Activate delay";
 constexpr const char *kDeactivateDelayText = "Deactivate delay";
 constexpr const char *kControlsToggleObjectName = "compDelayToggleButton";
+constexpr const char *kActivateDelayButtonStyle =
+	"QPushButton#compDelayToggleButton { background-color: #1f883d; color: white; font-weight: 600; }"
+	"QPushButton#compDelayToggleButton:hover { background-color: #2da44e; }"
+	"QPushButton#compDelayToggleButton:pressed { background-color: #116329; }"
+	"QPushButton#compDelayToggleButton:disabled { background-color: #6e7781; color: #d0d7de; }";
+constexpr const char *kDeactivateDelayButtonStyle =
+	"QPushButton#compDelayToggleButton { background-color: #cf222e; color: white; font-weight: 600; }"
+	"QPushButton#compDelayToggleButton:hover { background-color: #da3633; }"
+	"QPushButton#compDelayToggleButton:pressed { background-color: #a40e26; }"
+	"QPushButton#compDelayToggleButton:disabled { background-color: #6e7781; color: #d0d7de; }";
 constexpr const char *kSaveRoot = "comp_delay";
 constexpr const char *kApplyHotkey = "apply_hotkey";
 constexpr const char *kGoLiveHotkey = "go_live_hotkey";
@@ -91,6 +101,7 @@ void updateControlsToggleButton()
 
 	const bool active = isDelayActive();
 	gControlsToggleButton->setText(active ? kDeactivateDelayText : kActivateDelayText);
+	gControlsToggleButton->setStyleSheet(active ? kDeactivateDelayButtonStyle : kActivateDelayButtonStyle);
 	gControlsToggleButton->setToolTip(active ? "Deactivate Comp Delay and return to the source scene"
 					       : "Activate the configured Comp Delay");
 	gControlsToggleButton->setEnabled(gController != nullptr);

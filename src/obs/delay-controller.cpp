@@ -146,9 +146,20 @@ void DelayController::applySettings(const DelaySettings &settings)
 {
 	DelaySettings next = settings;
 	next.targetDelaySeconds = clampDelaySeconds(next.targetDelaySeconds);
+	const RuntimeState state = stateMachine_.state();
+	const bool delayActive = state == RuntimeState::Filling || state == RuntimeState::Delayed;
 	const uint32_t previousDelaySeconds = settings_.targetDelaySeconds;
-	const bool retargetActive = canRetargetActiveDelay(settings_, next);
+	const bool retargetActive = delayActive && canRetargetActiveDelay(settings_, next);
 	settings_ = next;
+	lastError_.clear();
+
+	if (!delayActive)
+		return;
+
+	if (settings_.targetDelaySeconds == 0) {
+		goLive();
+		return;
+	}
 
 	if (retargetActive) {
 		retargetActiveDelay(previousDelaySeconds);
@@ -348,8 +359,12 @@ uint32_t DelayController::targetDelaySeconds() const
 std::string DelayController::statusText() const
 {
 	std::ostringstream out;
-	out << toString(stateMachine_.state()) << " | target " << stateMachine_.targetDelaySeconds() << "s | buffer "
-	    << capture_.bufferDepthSeconds() << "s";
+	out << toString(stateMachine_.state());
+	if (stateMachine_.state() == RuntimeState::Off)
+		out << " | configured " << settings_.targetDelaySeconds << "s";
+	else
+		out << " | target " << stateMachine_.targetDelaySeconds() << "s";
+	out << " | buffer " << capture_.bufferDepthSeconds() << "s";
 	if (stateMachine_.state() == RuntimeState::Filling && stateMachine_.targetDelaySeconds() > 0) {
 		const uint32_t depth = capture_.bufferDepthSeconds();
 		const uint32_t remaining = depth < stateMachine_.targetDelaySeconds() ? stateMachine_.targetDelaySeconds() - depth : 0;
