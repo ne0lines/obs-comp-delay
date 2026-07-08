@@ -91,6 +91,17 @@ cmake --preset windows-x64
 cmake --build --preset windows-x64
 ```
 
+## Repository layout
+
+The repository is intentionally Windows-first for v1:
+
+- `.github/workflows/push.yaml`: builds and publishes the Windows setup artifact.
+- `cmake/common` and `cmake/windows`: minimal CMake bootstrap needed to fetch OBS/Qt deps and build on Windows.
+- `installer/windows`: Inno Setup script for the user-facing installer.
+- `src`, `data`, and `tests`: plugin source, OBS plugin data, and verification tests.
+
+Generated folders such as `build_x64`, `.deps`, and `release` are local build outputs and are not committed.
+
 ## Windows installer
 
 GitHub Actions builds a normal Windows setup executable on every push to `main`.

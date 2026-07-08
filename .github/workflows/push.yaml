@@ -23,15 +23,12 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          fetch-depth: 0
+
+      - name: Configure
+        run: cmake --preset windows-ci-x64
 
       - name: Build plugin
-        uses: ./.github/actions/build-plugin
-        with:
-          target: x64
-          config: RelWithDebInfo
+        run: cmake --build --preset windows-x64 --config RelWithDebInfo --parallel -- /consoleLoggerParameters:Summary /noLogo
 
       - name: Run unit and codec tests
         run: ctest --test-dir build_x64 -C RelWithDebInfo --output-on-failure

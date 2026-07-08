@@ -52,15 +52,9 @@ function(_setup_obs_studio)
     set(_is_fresh --fresh)
   endif()
 
-  if(OS_WINDOWS)
-    set(_cmake_generator "${CMAKE_GENERATOR}")
-    set(_cmake_arch "-A ${arch},version=${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION}")
-    set(_cmake_extra "-DCMAKE_SYSTEM_VERSION=${CMAKE_SYSTEM_VERSION} -DCMAKE_ENABLE_SCRIPTING=OFF")
-  elseif(OS_MACOS)
-    set(_cmake_generator "Xcode")
-    set(_cmake_arch "-DCMAKE_OSX_ARCHITECTURES:STRING='arm64;x86_64'")
-    set(_cmake_extra "-DCMAKE_OSX_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}")
-  endif()
+  set(_cmake_generator "${CMAKE_GENERATOR}")
+  set(_cmake_arch "-A ${arch},version=${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION}")
+  set(_cmake_extra "-DCMAKE_SYSTEM_VERSION=${CMAKE_SYSTEM_VERSION} -DCMAKE_ENABLE_SCRIPTING=OFF")
 
   message(STATUS "Configure ${label} (${arch})")
   execute_process(
@@ -94,7 +88,7 @@ function(_setup_obs_studio)
     COMMAND_ERROR_IS_FATAL ANY
     OUTPUT_QUIET
   )
-  message(STATUS "Build ${label} (Reelase - ${arch}) - done")
+  message(STATUS "Build ${label} (Release - ${arch}) - done")
 
   message(STATUS "Install ${label} (${arch})")
   execute_process(

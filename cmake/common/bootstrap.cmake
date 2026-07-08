@@ -3,7 +3,6 @@
 include_guard(GLOBAL)
 
 # Map fallback configurations for optimized build configurations
-# gersemi: off
 set(
   CMAKE_MAP_IMPORTED_CONFIG_RELWITHDEBINFO
     RelWithDebInfo
@@ -28,7 +27,6 @@ set(
     None
     ""
 )
-# gersemi: on
 
 # Prohibit in-source builds
 if("${CMAKE_CURRENT_BINARY_DIR}" STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -50,7 +48,7 @@ string(JSON _website GET ${buildspec} website)
 string(JSON _author GET ${buildspec} author)
 string(JSON _email GET ${buildspec} email)
 string(JSON _version GET ${buildspec} version)
-string(JSON _bundleId GET ${buildspec} platformConfig macos bundleId)
+set(_bundleId "")
 
 set(PLUGIN_AUTHOR ${_author})
 set(PLUGIN_WEBSITE ${_website})
@@ -67,8 +65,8 @@ unset(_version_canonical)
 include(buildnumber)
 include(osconfig)
 
-# Allow selection of common build types via UI
-if(NOT CMAKE_GENERATOR MATCHES "(Xcode|Visual Studio .+)")
+# Allow selection of common build types via UI for non-Visual Studio generators
+if(NOT CMAKE_GENERATOR MATCHES "Visual Studio .+")
   if(NOT CMAKE_BUILD_TYPE)
     set(
       CMAKE_BUILD_TYPE
