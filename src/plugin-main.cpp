@@ -169,6 +169,15 @@ void controlsToggleClicked()
 	}
 }
 
+void insertControlsToggleButtonAtTop(QBoxLayout *buttonsLayout, QPushButton *button)
+{
+	if (!buttonsLayout || !button)
+		return;
+
+	buttonsLayout->removeWidget(button);
+	buttonsLayout->insertWidget(0, button);
+}
+
 void installControlsToggleButton()
 {
 	auto *mainWindow = static_cast<QWidget *>(obs_frontend_get_main_window());
@@ -200,6 +209,7 @@ void installControlsToggleButton()
 
 	if (auto *existingButton = controlsDock->widget()->findChild<QPushButton *>(kControlsToggleObjectName)) {
 		gControlsToggleButton = existingButton;
+		insertControlsToggleButtonAtTop(buttonsLayout, existingButton);
 		updateControlsToggleButton();
 		return;
 	}
@@ -211,8 +221,7 @@ void installControlsToggleButton()
 	button->setAccessibleName("Comp Delay");
 	QObject::connect(button, &QPushButton::clicked, controlsToggleClicked);
 
-	const int insertionIndex = buttonsLayout->count() > 0 ? buttonsLayout->count() - 1 : 0;
-	buttonsLayout->insertWidget(insertionIndex, button);
+	insertControlsToggleButtonAtTop(buttonsLayout, button);
 	gControlsToggleButton = button;
 	updateControlsToggleButton();
 	blog(LOG_INFO, "[obs-comp-delay] controls dock toggle button installed");
