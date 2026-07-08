@@ -150,12 +150,12 @@ void DelaySettingsDialog::syncFromController()
 	setComboText(transitionScene_, settings.transitionSceneName);
 	setComboText(delayScene_, settings.delaySceneName);
 
-	setComboData(videoEncoder_, settings.videoEncoderName, "Unavailable video encoder");
-	setComboData(audioEncoder_, settings.audioEncoderName, "Unavailable audio encoder");
+	const bool videoEncoderSelected = setComboData(videoEncoder_, settings.videoEncoderName, "Unavailable video encoder");
+	const bool audioEncoderSelected = setComboData(audioEncoder_, settings.audioEncoderName, "Unavailable audio encoder");
 
 	delaySeconds_->setValue(static_cast<int>(settings.targetDelaySeconds));
 	syncing_ = false;
-	setDirty(false);
+	setDirty(!videoEncoderSelected || !audioEncoderSelected);
 }
 
 void DelaySettingsDialog::applyClicked()
@@ -197,18 +197,20 @@ void DelaySettingsDialog::setComboText(QComboBox *combo, const std::string &text
 		combo->setCurrentIndex(index);
 }
 
-void DelaySettingsDialog::setComboData(QComboBox *combo, const std::string &data, const std::string &missingLabel)
+bool DelaySettingsDialog::setComboData(QComboBox *combo, const std::string &data, const std::string &missingLabel)
 {
+	(void)missingLabel;
 	if (!combo || data.empty())
-		return;
+		return false;
 
 	const QString value = QString::fromStdString(data);
-	int index = combo->findData(value);
-	if (index < 0) {
-		combo->addItem(QString::fromStdString(missingLabel + ": " + data), value);
-		index = combo->count() - 1;
+	const int index = combo->findData(value);
+	if (index >= 0) {
+		combo->setCurrentIndex(index);
+		return true;
 	}
-	combo->setCurrentIndex(index);
+
+	return false;
 }
 
 } // namespace comp_delay

@@ -10,8 +10,8 @@ The plugin delays one selected source scene. When you activate delay, OBS immedi
 - Uses the delay value configured in `Tools` -> `Comp Delay Settings`.
 - Adds an `Activate delay` / `Deactivate delay` button to OBS' `Controls` dock.
 - Shows the Controls button in green when delay is inactive and red when delay is active.
-- Provides hotkeys for `Comp Delay: Activate delay` and `Comp Delay: Deactivate delay`.
-- Lets you choose the video and audio encoders used by the delay buffer.
+- Provides hotkeys for `Comp Delay: Activate delay`, `Comp Delay: Deactivate delay`, and `Comp Delay: Deactivate after delay`.
+- Lets you choose from video and audio encoders that are available and can be opened on your computer.
 - Supports a `Delay Transition Scene` countdown text token: `%delay_countdown%`.
 
 ## Install
@@ -55,7 +55,8 @@ Click `Apply` after changing settings. The button is only needed when the dialog
 3. Click `Activate delay` in OBS' `Controls` dock, or use your assigned hotkey.
 4. OBS switches to `Delay Transition Scene` immediately.
 5. When the configured delay has filled, OBS switches to the delay scene automatically.
-6. Click `Deactivate delay` to drop the buffer and return to the source scene live.
+6. Click `Deactivate delay` to return to the source scene live.
+7. In the prompt, choose `Deactivate now`, `Deactivate after XXs`, or `Cancel`.
 
 Changing the delay while it is already active uses the same configured delay workflow. The plugin shows `Delay Transition Scene` while it adjusts the buffer, then returns to delayed playback.
 
@@ -94,6 +95,10 @@ OBS needs a scene that contains the `Comp Delay Playback` source. That source is
 ### Can I Use Different Fixed Buttons Like 30s, 60s, And 300s?
 
 No. The plugin uses the delay value from `Comp Delay Settings`. This keeps operation simple and avoids activating the wrong delay during a live production.
+
+### What Is The Difference Between Deactivate Now And Deactivate After XXs?
+
+`Deactivate now` drops the delay buffer immediately and returns to the source scene live. `Deactivate after XXs` schedules deactivation after the current configured delay time.
 
 ### Can I Change The Delay While It Is Active?
 

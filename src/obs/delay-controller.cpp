@@ -184,6 +184,7 @@ void DelayController::applyConfiguredDelay()
 	switchedToDelayScene_ = false;
 	delaySceneSwitchNotBeforeNs_ = 0;
 	transitionCountdownRestoreAtNs_ = 0;
+	scheduledGoLiveAtNs_ = 0;
 
 	if (settings_.targetDelaySeconds == 0) {
 		blog(LOG_INFO, "[obs-comp-delay] configured delay is 0s; going live");
@@ -228,6 +229,7 @@ void DelayController::applyConfiguredDelay()
 
 void DelayController::goLive()
 {
+	scheduledGoLiveAtNs_ = 0;
 	scheduleTransitionCountdownRestore();
 	capture_.stop();
 	setPlaybackBuffers(nullptr, 0);
@@ -239,10 +241,28 @@ void DelayController::goLive()
 		obs_ui::switchToSceneByName(settings_.sourceSceneName);
 }
 
+void DelayController::scheduleGoLiveAfterCurrentDelay()
+{
+	if (stateMachine_.state() != RuntimeState::Filling && stateMachine_.state() != RuntimeState::Delayed)
+		return;
+
+	uint32_t delaySeconds = stateMachine_.targetDelaySeconds();
+	if (delaySeconds == 0)
+		delaySeconds = settings_.targetDelaySeconds;
+	if (delaySeconds == 0) {
+		goLive();
+		return;
+	}
+
+	scheduledGoLiveAtNs_ = os_gettime_ns() + static_cast<uint64_t>(delaySeconds) * 1000000000ULL;
+	blog(LOG_INFO, "[obs-comp-delay] scheduled delayed deactivation in %us", delaySeconds);
+}
+
 void DelayController::tick()
 {
 	capture_.tick();
 	processTransitionCountdownRestore();
+	processScheduledGoLive();
 
 	const RuntimeState state = stateMachine_.state();
 	if (state == RuntimeState::Filling) {
@@ -377,6 +397,8 @@ std::string DelayController::statusText() const
 		const uint32_t remaining = depth < stateMachine_.targetDelaySeconds() ? stateMachine_.targetDelaySeconds() - depth : 0;
 		out << " | ready in " << remaining << "s";
 	}
+	if (scheduledGoLiveAtNs_ != 0)
+		out << " | deactivating in " << scheduledGoLiveRemainingSeconds() << "s";
 	if (!lastError_.empty())
 		out << " | " << lastError_;
 	else if (capture_.active())
@@ -503,6 +525,7 @@ void DelayController::retargetActiveDelay(uint32_t previousDelaySeconds)
 	switchedToDelayScene_ = false;
 	setPlaybackBuffers(nullptr, 0);
 	delaySceneSwitchNotBeforeNs_ = os_gettime_ns() + 1000000000ULL;
+	scheduledGoLiveAtNs_ = 0;
 
 	std::string error;
 	if (!validateSettings(settings_, error)) {
@@ -635,6 +658,27 @@ void DelayController::restoreTransitionCountdownTemplates()
 
 	transitionCountdownTemplates_.clear();
 	transitionCountdownRestoreAtNs_ = 0;
+}
+
+void DelayController::processScheduledGoLive()
+{
+	if (scheduledGoLiveAtNs_ == 0 || os_gettime_ns() < scheduledGoLiveAtNs_)
+		return;
+
+	goLive();
+}
+
+uint32_t DelayController::scheduledGoLiveRemainingSeconds() const
+{
+	if (scheduledGoLiveAtNs_ == 0)
+		return 0;
+
+	const uint64_t now = os_gettime_ns();
+	if (now >= scheduledGoLiveAtNs_)
+		return 0;
+
+	const uint64_t remainingNs = scheduledGoLiveAtNs_ - now;
+	return static_cast<uint32_t>((remainingNs + 999999999ULL) / 1000000000ULL);
 }
 
 } // namespace comp_delay

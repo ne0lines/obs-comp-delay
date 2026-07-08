@@ -30,7 +30,7 @@ private:
 	void markDirty();
 	void setDirty(bool dirty);
 	void setComboText(QComboBox *combo, const std::string &text);
-	void setComboData(QComboBox *combo, const std::string &data, const std::string &missingLabel);
+	bool setComboData(QComboBox *combo, const std::string &data, const std::string &missingLabel);
 
 	DelayController &controller_;
 	QComboBox *sourceScene_ = nullptr;

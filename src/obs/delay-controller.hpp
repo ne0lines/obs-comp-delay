@@ -19,6 +19,7 @@ public:
 	void applySettings(const DelaySettings &settings);
 	void applyConfiguredDelay();
 	void goLive();
+	void scheduleGoLiveAfterCurrentDelay();
 	void tick();
 
 	void save(obs_data_t *saveData) const;
@@ -44,6 +45,8 @@ private:
 	void scheduleTransitionCountdownRestore();
 	void processTransitionCountdownRestore();
 	void restoreTransitionCountdownTemplates();
+	void processScheduledGoLive();
+	uint32_t scheduledGoLiveRemainingSeconds() const;
 
 	DelaySettings settings_;
 	DelayStateMachine stateMachine_;
@@ -52,6 +55,7 @@ private:
 	std::unordered_map<std::string, std::string> transitionCountdownTemplates_;
 	uint64_t delaySceneSwitchNotBeforeNs_ = 0;
 	uint64_t transitionCountdownRestoreAtNs_ = 0;
+	uint64_t scheduledGoLiveAtNs_ = 0;
 	bool switchedToDelayScene_ = false;
 };
 

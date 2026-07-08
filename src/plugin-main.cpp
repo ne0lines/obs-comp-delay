@@ -42,6 +42,8 @@ constexpr const char *kHotkeyApply = "obs_comp_delay.apply_configured_delay";
 constexpr const char *kHotkeyApplyDescription = "Comp Delay: Activate delay";
 constexpr const char *kHotkeyGoLive = "obs_comp_delay.go_live";
 constexpr const char *kHotkeyGoLiveDescription = "Comp Delay: Deactivate delay";
+constexpr const char *kHotkeyDelayedGoLive = "obs_comp_delay.deactivate_after_delay";
+constexpr const char *kHotkeyDelayedGoLiveDescription = "Comp Delay: Deactivate after delay";
 constexpr const char *kActivateDelayText = "Activate delay";
 constexpr const char *kDeactivateDelayText = "Deactivate delay";
 constexpr const char *kControlsToggleObjectName = "compDelayToggleButton";
@@ -58,15 +60,24 @@ constexpr const char *kDeactivateDelayButtonStyle =
 constexpr const char *kSaveRoot = "comp_delay";
 constexpr const char *kApplyHotkey = "apply_hotkey";
 constexpr const char *kGoLiveHotkey = "go_live_hotkey";
+constexpr const char *kDelayedGoLiveHotkey = "delayed_go_live_hotkey";
 constexpr int kNoPendingHotkeyAction = -1;
 constexpr int kActivateDelayHotkeyAction = -2;
 constexpr int kDeactivateDelayHotkeyAction = -3;
+constexpr int kDelayedDeactivateHotkeyAction = -4;
+
+enum class DeactivateChoice {
+	Cancel,
+	Now,
+	AfterDelay,
+};
 
 std::unique_ptr<comp_delay::DelayController> gController;
 comp_delay::DelaySettingsDialog *gSettingsDialog = nullptr;
 QTimer *gRuntimeTimer = nullptr;
 obs_hotkey_id gApplyHotkey = OBS_INVALID_HOTKEY_ID;
 obs_hotkey_id gGoLiveHotkey = OBS_INVALID_HOTKEY_ID;
+obs_hotkey_id gDelayedGoLiveHotkey = OBS_INVALID_HOTKEY_ID;
 QPointer<QPushButton> gControlsToggleButton;
 std::atomic<int> gPendingHotkeyAction{kNoPendingHotkeyAction};
 bool gControlsToggleInstallWarningLogged = false;
@@ -96,6 +107,14 @@ void queueDeactivateDelay(const char *source)
 	}
 }
 
+void queueDelayedDeactivateDelay(const char *source)
+{
+	if (gController) {
+		blog(LOG_INFO, "[obs-comp-delay] delayed deactivate requested from %s", source);
+		gPendingHotkeyAction.store(kDelayedDeactivateHotkeyAction);
+	}
+}
+
 void updateControlsToggleButton()
 {
 	if (!gControlsToggleButton)
@@ -109,10 +128,10 @@ void updateControlsToggleButton()
 	gControlsToggleButton->setEnabled(gController != nullptr);
 }
 
-bool confirmDeactivateDelay()
+DeactivateChoice confirmDeactivateDelay()
 {
 	if (!gController)
-		return false;
+		return DeactivateChoice::Cancel;
 
 	uint32_t skippedSeconds = gController->targetDelaySeconds();
 	if (skippedSeconds == 0)
@@ -123,19 +142,28 @@ bool confirmDeactivateDelay()
 				 QMessageBox::NoButton, gControlsToggleButton ? gControlsToggleButton.data()
 									      : static_cast<QWidget *>(obs_frontend_get_main_window()));
 	confirmation.setInformativeText("Deactivate delay and return to the source scene live?");
-	auto *deactivateButton = confirmation.addButton("Deactivate delay", QMessageBox::DestructiveRole);
+	auto *deactivateNowButton = confirmation.addButton("Deactivate now", QMessageBox::DestructiveRole);
+	auto *deactivateAfterDelayButton =
+		confirmation.addButton(QString("Deactivate after %1s").arg(skippedSeconds), QMessageBox::AcceptRole);
 	auto *cancelButton = confirmation.addButton("Cancel", QMessageBox::RejectRole);
 	confirmation.setDefaultButton(static_cast<QPushButton *>(cancelButton));
 	confirmation.exec();
-	return confirmation.clickedButton() == deactivateButton;
+
+	if (confirmation.clickedButton() == deactivateNowButton)
+		return DeactivateChoice::Now;
+	if (confirmation.clickedButton() == deactivateAfterDelayButton)
+		return DeactivateChoice::AfterDelay;
+	return DeactivateChoice::Cancel;
 }
 
 void controlsToggleClicked()
 {
 	if (isDelayActive()) {
-		if (!confirmDeactivateDelay())
-			return;
-		queueDeactivateDelay("controls button");
+		const DeactivateChoice choice = confirmDeactivateDelay();
+		if (choice == DeactivateChoice::Now)
+			queueDeactivateDelay("controls button");
+		else if (choice == DeactivateChoice::AfterDelay)
+			queueDelayedDeactivateDelay("controls button");
 	} else {
 		queueActivateDelay("controls button");
 	}
@@ -210,6 +238,12 @@ void goLiveHotkey(void *, obs_hotkey_id, obs_hotkey_t *, bool pressed)
 		queueDeactivateDelay("hotkey");
 }
 
+void delayedGoLiveHotkey(void *, obs_hotkey_id, obs_hotkey_t *, bool pressed)
+{
+	if (pressed)
+		queueDelayedDeactivateDelay("hotkey");
+}
+
 void consumePendingHotkeyAction()
 {
 	if (!gController)
@@ -226,6 +260,11 @@ void consumePendingHotkeyAction()
 
 	if (action == kDeactivateDelayHotkeyAction) {
 		gController->goLive();
+		return;
+	}
+
+	if (action == kDelayedDeactivateHotkeyAction) {
+		gController->scheduleGoLiveAfterCurrentDelay();
 		return;
 	}
 
@@ -263,12 +302,16 @@ void saveLoadCallback(obs_data_t *saveData, bool saving, void *)
 		if (root) {
 			obs_data_array_t *apply = obs_hotkey_save(gApplyHotkey);
 			obs_data_array_t *goLive = obs_hotkey_save(gGoLiveHotkey);
+			obs_data_array_t *delayedGoLive = obs_hotkey_save(gDelayedGoLiveHotkey);
 			obs_data_set_array(root, kApplyHotkey, apply);
 			obs_data_set_array(root, kGoLiveHotkey, goLive);
+			obs_data_set_array(root, kDelayedGoLiveHotkey, delayedGoLive);
 			if (apply)
 				obs_data_array_release(apply);
 			if (goLive)
 				obs_data_array_release(goLive);
+			if (delayedGoLive)
+				obs_data_array_release(delayedGoLive);
 			obs_data_release(root);
 		}
 		return;
@@ -280,6 +323,7 @@ void saveLoadCallback(obs_data_t *saveData, bool saving, void *)
 	if (root) {
 		obs_data_array_t *apply = obs_data_get_array(root, kApplyHotkey);
 		obs_data_array_t *goLive = obs_data_get_array(root, kGoLiveHotkey);
+		obs_data_array_t *delayedGoLive = obs_data_get_array(root, kDelayedGoLiveHotkey);
 		if (apply) {
 			obs_hotkey_load(gApplyHotkey, apply);
 			obs_data_array_release(apply);
@@ -287,6 +331,10 @@ void saveLoadCallback(obs_data_t *saveData, bool saving, void *)
 		if (goLive) {
 			obs_hotkey_load(gGoLiveHotkey, goLive);
 			obs_data_array_release(goLive);
+		}
+		if (delayedGoLive) {
+			obs_hotkey_load(gDelayedGoLiveHotkey, delayedGoLive);
+			obs_data_array_release(delayedGoLive);
 		}
 		obs_data_release(root);
 	}
@@ -307,6 +355,8 @@ bool obs_module_load(void)
 	gController = std::make_unique<comp_delay::DelayController>();
 	gApplyHotkey = obs_hotkey_register_frontend(kHotkeyApply, kHotkeyApplyDescription, applyHotkey, nullptr);
 	gGoLiveHotkey = obs_hotkey_register_frontend(kHotkeyGoLive, kHotkeyGoLiveDescription, goLiveHotkey, nullptr);
+	gDelayedGoLiveHotkey =
+		obs_hotkey_register_frontend(kHotkeyDelayedGoLive, kHotkeyDelayedGoLiveDescription, delayedGoLiveHotkey, nullptr);
 	obs_frontend_add_save_callback(saveLoadCallback, nullptr);
 	obs_frontend_add_tools_menu_item("Comp Delay Settings", showSettingsDialog, nullptr);
 	installControlsToggleButton();
@@ -340,6 +390,10 @@ void obs_module_unload(void)
 	if (gGoLiveHotkey != OBS_INVALID_HOTKEY_ID) {
 		obs_hotkey_unregister(gGoLiveHotkey);
 		gGoLiveHotkey = OBS_INVALID_HOTKEY_ID;
+	}
+	if (gDelayedGoLiveHotkey != OBS_INVALID_HOTKEY_ID) {
+		obs_hotkey_unregister(gDelayedGoLiveHotkey);
+		gDelayedGoLiveHotkey = OBS_INVALID_HOTKEY_ID;
 	}
 	if (gRuntimeTimer) {
 		gRuntimeTimer->stop();

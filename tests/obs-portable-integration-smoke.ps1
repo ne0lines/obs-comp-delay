@@ -471,8 +471,8 @@ async function main() {
     return;
   }
 
-  await triggerHotkeyByName('obs_comp_delay.go_live').catch(() => {});
-  const afterGoLive = await waitForScene(sourceScene);
+  await triggerHotkeyByName('obs_comp_delay.deactivate_after_delay').catch(() => {});
+  const afterGoLive = await waitForScene(sourceScene, Math.max(5000, (delaySeconds + 5) * 1000));
   if (verifyStreaming) {
     stream.checks.push(await assertStreamStillActive('after go live', stream.checks.at(-1)?.outputBytes || 0));
     await request('StopStream').catch(() => {});

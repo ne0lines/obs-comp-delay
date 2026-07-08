@@ -110,6 +110,8 @@ std::string encoderDisplayName(const AVCodec *codec)
 	return out.str();
 }
 
+bool hasSampleFormat(const AVCodec *codec, AVSampleFormat desired);
+
 std::vector<FfmpegEncoderInfo> listEncoders(AVMediaType mediaType, AVCodecID codecId)
 {
 	std::vector<FfmpegEncoderInfo> encoders;
@@ -125,6 +127,59 @@ std::vector<FfmpegEncoderInfo> listEncoders(AVMediaType mediaType, AVCodecID cod
 		return left.name < right.name;
 	});
 	return encoders;
+}
+
+bool canOpenH264Encoder(const AVCodec *codec)
+{
+	if (!codec || !av_codec_is_encoder(codec) || codec->type != AVMEDIA_TYPE_VIDEO || codec->id != AV_CODEC_ID_H264)
+		return false;
+
+	AVCodecContext *context = avcodec_alloc_context3(codec);
+	if (!context)
+		return false;
+
+	context->codec_type = AVMEDIA_TYPE_VIDEO;
+	context->codec_id = AV_CODEC_ID_H264;
+	context->width = 128;
+	context->height = 128;
+	context->time_base = kNsTimeBase;
+	context->framerate = {30, 1};
+	context->pix_fmt = selectPixelFormat(codec);
+	context->bit_rate = 1000000;
+	context->gop_size = 30;
+	context->max_b_frames = 0;
+
+	av_opt_set(context->priv_data, "preset", "veryfast", 0);
+	av_opt_set(context->priv_data, "tune", "zerolatency", 0);
+	av_opt_set(context->priv_data, "repeat-headers", "1", 0);
+	av_opt_set(context->priv_data, "sc_threshold", "0", 0);
+
+	const int result = avcodec_open2(context, codec, nullptr);
+	avcodec_free_context(&context);
+	return result >= 0;
+}
+
+bool canOpenAacEncoder(const AVCodec *codec)
+{
+	if (!codec || !av_codec_is_encoder(codec) || codec->type != AVMEDIA_TYPE_AUDIO || codec->id != AV_CODEC_ID_AAC ||
+	    !hasSampleFormat(codec, AV_SAMPLE_FMT_FLTP))
+		return false;
+
+	AVCodecContext *context = avcodec_alloc_context3(codec);
+	if (!context)
+		return false;
+
+	context->codec_type = AVMEDIA_TYPE_AUDIO;
+	context->codec_id = AV_CODEC_ID_AAC;
+	context->sample_rate = 48000;
+	context->sample_fmt = AV_SAMPLE_FMT_FLTP;
+	context->bit_rate = 160000;
+	context->time_base = {1, context->sample_rate};
+	av_channel_layout_default(&context->ch_layout, 2);
+
+	const int result = avcodec_open2(context, codec, nullptr);
+	avcodec_free_context(&context);
+	return result >= 0;
 }
 
 bool hasEncoder(const std::string &name, AVMediaType mediaType, AVCodecID codecId)
@@ -216,7 +271,12 @@ uint64_t audioDurationNs(uint32_t frames, uint32_t sampleRate)
 
 std::vector<FfmpegEncoderInfo> listFfmpegVideoEncoders()
 {
-	return listEncoders(AVMEDIA_TYPE_VIDEO, AV_CODEC_ID_H264);
+	std::vector<FfmpegEncoderInfo> encoders;
+	for (const auto &encoder : listEncoders(AVMEDIA_TYPE_VIDEO, AV_CODEC_ID_H264)) {
+		if (canOpenH264Encoder(avcodec_find_encoder_by_name(encoder.name.c_str())))
+			encoders.push_back(encoder);
+	}
+	return encoders;
 }
 
 std::vector<FfmpegEncoderInfo> listFfmpegAudioEncoders()
@@ -224,7 +284,7 @@ std::vector<FfmpegEncoderInfo> listFfmpegAudioEncoders()
 	std::vector<FfmpegEncoderInfo> encoders;
 	for (const auto &encoder : listEncoders(AVMEDIA_TYPE_AUDIO, AV_CODEC_ID_AAC)) {
 		const AVCodec *codec = avcodec_find_encoder_by_name(encoder.name.c_str());
-		if (hasSampleFormat(codec, AV_SAMPLE_FMT_FLTP))
+		if (canOpenAacEncoder(codec))
 			encoders.push_back(encoder);
 	}
 	return encoders;
@@ -232,7 +292,10 @@ std::vector<FfmpegEncoderInfo> listFfmpegAudioEncoders()
 
 bool isFfmpegVideoEncoderAvailable(const std::string &name)
 {
-	return hasEncoder(name, AVMEDIA_TYPE_VIDEO, AV_CODEC_ID_H264);
+	if (!hasEncoder(name, AVMEDIA_TYPE_VIDEO, AV_CODEC_ID_H264))
+		return false;
+
+	return canOpenH264Encoder(avcodec_find_encoder_by_name(name.c_str()));
 }
 
 bool isFfmpegAudioEncoderAvailable(const std::string &name)
@@ -240,7 +303,7 @@ bool isFfmpegAudioEncoderAvailable(const std::string &name)
 	if (!hasEncoder(name, AVMEDIA_TYPE_AUDIO, AV_CODEC_ID_AAC))
 		return false;
 
-	return hasSampleFormat(avcodec_find_encoder_by_name(name.c_str()), AV_SAMPLE_FMT_FLTP);
+	return canOpenAacEncoder(avcodec_find_encoder_by_name(name.c_str()));
 }
 
 FfmpegVideoEncoder::FfmpegVideoEncoder()
