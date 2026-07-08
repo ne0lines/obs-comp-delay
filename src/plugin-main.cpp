@@ -20,9 +20,11 @@ the Free Software Foundation; either version 2 of the License, or
 
 #include <QBoxLayout>
 #include <QDockWidget>
+#include <QMessageBox>
 #include <QPointer>
 #include <QPushButton>
 #include <QSizePolicy>
+#include <QString>
 #include <QTimer>
 #include <QWidget>
 
@@ -107,12 +109,36 @@ void updateControlsToggleButton()
 	gControlsToggleButton->setEnabled(gController != nullptr);
 }
 
+bool confirmDeactivateDelay()
+{
+	if (!gController)
+		return false;
+
+	uint32_t skippedSeconds = gController->targetDelaySeconds();
+	if (skippedSeconds == 0)
+		skippedSeconds = gController->settings().targetDelaySeconds;
+
+	QMessageBox confirmation(QMessageBox::Warning, "Deactivate delay?",
+				 QString("Viewers will miss the latest %1 seconds of delayed content.").arg(skippedSeconds),
+				 QMessageBox::NoButton, gControlsToggleButton ? gControlsToggleButton.data()
+									      : static_cast<QWidget *>(obs_frontend_get_main_window()));
+	confirmation.setInformativeText("Deactivate delay and return to the source scene live?");
+	auto *deactivateButton = confirmation.addButton("Deactivate delay", QMessageBox::DestructiveRole);
+	auto *cancelButton = confirmation.addButton("Cancel", QMessageBox::RejectRole);
+	confirmation.setDefaultButton(static_cast<QPushButton *>(cancelButton));
+	confirmation.exec();
+	return confirmation.clickedButton() == deactivateButton;
+}
+
 void controlsToggleClicked()
 {
-	if (isDelayActive())
+	if (isDelayActive()) {
+		if (!confirmDeactivateDelay())
+			return;
 		queueDeactivateDelay("controls button");
-	else
+	} else {
 		queueActivateDelay("controls button");
+	}
 }
 
 void installControlsToggleButton()

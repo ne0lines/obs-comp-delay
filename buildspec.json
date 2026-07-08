@@ -30,7 +30,7 @@
   },
   "name": "obs-comp-delay",
   "displayName": "OBS Comp Delay",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "author": "ne0lines",
   "website": "https://github.com/ne0lines/obs-comp-delay",
   "email": "opensource@example.com"

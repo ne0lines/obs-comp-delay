@@ -40,7 +40,7 @@ DelaySettingsDialog::DelaySettingsDialog(DelayController &controller, QWidget *p
 	delaySeconds_->setSuffix(" s");
 
 	form->addRow("Source scene", sourceScene_);
-	form->addRow("Transition scene", transitionScene_);
+	form->addRow("Delay Transition Scene", transitionScene_);
 	form->addRow("Delay scene", delayScene_);
 	form->addRow("Video encoder", videoEncoder_);
 	form->addRow("Audio encoder", audioEncoder_);

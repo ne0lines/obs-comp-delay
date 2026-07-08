@@ -236,6 +236,12 @@ async function createCountdownTextInput() {
   throw new Error(`could not create countdown text source: ${errors.join('; ')}`);
 }
 
+async function getCountdownText() {
+  const settings = await request('GetInputSettings', {inputName: countdownInput});
+  const text = settings?.inputSettings?.text;
+  return typeof text === 'string' ? text : null;
+}
+
 async function ensureMediaInput(sceneName) {
   const settings = {
     is_local_file: true,
@@ -435,6 +441,9 @@ async function main() {
   }
 
   const initial = await waitForDelayScene(delaySeconds);
+  const countdownAfterDelayScene = await getCountdownText();
+  await sleep(5500);
+  const countdownAfterRestoreDelay = await getCountdownText();
   if (verifyStreaming) {
     stream.checks.push(await assertStreamStillActive('after initial delay', stream.started.outputBytes));
   }
@@ -472,13 +481,19 @@ async function main() {
     transitionObserved: initial.transitionObserved,
     reachedDelay: initial.reachedDelay,
     countdownUpdated: initial.countdownUpdated,
+    countdownBlankedAfterDelayScene: typeof countdownAfterDelayScene === 'string' && countdownAfterDelayScene.trim() === '',
+    countdownRestoredAfterDelay: countdownAfterRestoreDelay === 'Delay starts in %delay_countdown%',
     countdownInputKind,
     initial,
+    countdownAfterDelayScene,
+    countdownAfterRestoreDelay,
     stream,
     afterGoLiveScene: afterGoLive.currentProgramSceneName,
   };
   console.log(JSON.stringify(result, null, 2));
-  if (!result.transitionObserved || !result.reachedDelay || !result.countdownUpdated || result.afterGoLiveScene !== sourceScene) {
+  if (!result.transitionObserved || !result.reachedDelay || !result.countdownUpdated ||
+      !result.countdownBlankedAfterDelayScene || !result.countdownRestoredAfterDelay ||
+      result.afterGoLiveScene !== sourceScene) {
     process.exitCode = 3;
   }
   ws.close();

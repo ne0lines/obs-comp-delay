@@ -40,6 +40,9 @@ private:
 	void failRuntime(const std::string &message);
 	void switchToTransitionOrFail();
 	void updateTransitionCountdown(uint32_t remainingSeconds);
+	void blankTransitionCountdownTemplates();
+	void scheduleTransitionCountdownRestore();
+	void processTransitionCountdownRestore();
 	void restoreTransitionCountdownTemplates();
 
 	DelaySettings settings_;
@@ -48,6 +51,7 @@ private:
 	std::string lastError_;
 	std::unordered_map<std::string, std::string> transitionCountdownTemplates_;
 	uint64_t delaySceneSwitchNotBeforeNs_ = 0;
+	uint64_t transitionCountdownRestoreAtNs_ = 0;
 	bool switchedToDelayScene_ = false;
 };
 
