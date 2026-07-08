@@ -63,13 +63,13 @@ DelaySettingsDialog::DelaySettingsDialog(DelayController &controller, QWidget *p
 
 	auto *buttons = new QHBoxLayout();
 	auto *refresh = new QPushButton("Refresh", this);
-	auto *apply = new QPushButton("Apply", this);
-	auto *goLive = new QPushButton("Go Live", this);
+	auto *activateDelay = new QPushButton("Activate delay", this);
+	auto *deactivateDelay = new QPushButton("Deactivate delay", this);
 	auto *close = new QPushButton("Close", this);
 	buttons->addWidget(refresh);
 	buttons->addStretch();
-	buttons->addWidget(apply);
-	buttons->addWidget(goLive);
+	buttons->addWidget(activateDelay);
+	buttons->addWidget(deactivateDelay);
 	buttons->addWidget(close);
 	layout->addLayout(buttons);
 
@@ -77,8 +77,8 @@ DelaySettingsDialog::DelaySettingsDialog(DelayController &controller, QWidget *p
 		refreshScenes();
 		refreshEncoders();
 	});
-	connect(apply, &QPushButton::clicked, this, [this]() { applyClicked(); });
-	connect(goLive, &QPushButton::clicked, this, [this]() { goLiveClicked(); });
+	connect(activateDelay, &QPushButton::clicked, this, [this]() { applyClicked(); });
+	connect(deactivateDelay, &QPushButton::clicked, this, [this]() { goLiveClicked(); });
 	connect(close, &QPushButton::clicked, this, [this]() { hide(); });
 
 	refreshScenes();

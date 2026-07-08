@@ -18,10 +18,14 @@ the Free Software Foundation; either version 2 of the License, or
 #include <obs-frontend-api.h>
 #include <obs-hotkey.h>
 
+#include <QBoxLayout>
+#include <QDockWidget>
+#include <QPointer>
+#include <QPushButton>
+#include <QSizePolicy>
 #include <QTimer>
 #include <QWidget>
 
-#include <array>
 #include <atomic>
 #include <cstdint>
 #include <memory>
@@ -33,60 +37,140 @@ OBS_MODULE_USE_DEFAULT_LOCALE(PLUGIN_NAME, "en-US")
 namespace {
 
 constexpr const char *kHotkeyApply = "obs_comp_delay.apply_configured_delay";
-constexpr const char *kHotkeyApplyDescription = "Comp Delay: Apply configured delay";
+constexpr const char *kHotkeyApplyDescription = "Comp Delay: Activate delay";
 constexpr const char *kHotkeyGoLive = "obs_comp_delay.go_live";
-constexpr const char *kHotkeyGoLiveDescription = "Comp Delay: Go live / 0 delay";
+constexpr const char *kHotkeyGoLiveDescription = "Comp Delay: Deactivate delay";
+constexpr const char *kActivateDelayText = "Activate delay";
+constexpr const char *kDeactivateDelayText = "Deactivate delay";
+constexpr const char *kControlsToggleObjectName = "compDelayToggleButton";
 constexpr const char *kSaveRoot = "comp_delay";
 constexpr const char *kApplyHotkey = "apply_hotkey";
 constexpr const char *kGoLiveHotkey = "go_live_hotkey";
 constexpr int kNoPendingHotkeyAction = -1;
-constexpr int kApplyConfiguredHotkeyAction = -2;
-constexpr int kGoLiveHotkeyAction = -3;
-
-struct PresetHotkey {
-	const char *name;
-	const char *description;
-	const char *saveKey;
-	uint32_t delaySeconds;
-	obs_hotkey_id id = OBS_INVALID_HOTKEY_ID;
-};
+constexpr int kActivateDelayHotkeyAction = -2;
+constexpr int kDeactivateDelayHotkeyAction = -3;
 
 std::unique_ptr<comp_delay::DelayController> gController;
 comp_delay::DelaySettingsDialog *gSettingsDialog = nullptr;
 QTimer *gRuntimeTimer = nullptr;
 obs_hotkey_id gApplyHotkey = OBS_INVALID_HOTKEY_ID;
 obs_hotkey_id gGoLiveHotkey = OBS_INVALID_HOTKEY_ID;
+QPointer<QPushButton> gControlsToggleButton;
 std::atomic<int> gPendingHotkeyAction{kNoPendingHotkeyAction};
-std::array<PresetHotkey, 3> gPresetHotkeys = {{
-	{"obs_comp_delay.apply_30s", "Comp Delay: Apply 30s delay", "preset_30_hotkey", 30},
-	{"obs_comp_delay.apply_60s", "Comp Delay: Apply 60s delay", "preset_60_hotkey", 60},
-	{"obs_comp_delay.apply_300s", "Comp Delay: Apply 300s delay", "preset_300_hotkey", 300},
-}};
+bool gControlsToggleInstallWarningLogged = false;
+
+bool isDelayActive()
+{
+	if (!gController)
+		return false;
+
+	const auto state = gController->state();
+	return state == comp_delay::RuntimeState::Filling || state == comp_delay::RuntimeState::Delayed;
+}
+
+void queueActivateDelay(const char *source)
+{
+	if (gController) {
+		blog(LOG_INFO, "[obs-comp-delay] activate delay requested from %s", source);
+		gPendingHotkeyAction.store(kActivateDelayHotkeyAction);
+	}
+}
+
+void queueDeactivateDelay(const char *source)
+{
+	if (gController) {
+		blog(LOG_INFO, "[obs-comp-delay] deactivate delay requested from %s", source);
+		gPendingHotkeyAction.store(kDeactivateDelayHotkeyAction);
+	}
+}
+
+void updateControlsToggleButton()
+{
+	if (!gControlsToggleButton)
+		return;
+
+	const bool active = isDelayActive();
+	gControlsToggleButton->setText(active ? kDeactivateDelayText : kActivateDelayText);
+	gControlsToggleButton->setToolTip(active ? "Deactivate Comp Delay and return to the source scene"
+					       : "Activate the configured Comp Delay");
+	gControlsToggleButton->setEnabled(gController != nullptr);
+}
+
+void controlsToggleClicked()
+{
+	if (isDelayActive())
+		queueDeactivateDelay("controls button");
+	else
+		queueActivateDelay("controls button");
+}
+
+void installControlsToggleButton()
+{
+	auto *mainWindow = static_cast<QWidget *>(obs_frontend_get_main_window());
+	if (!mainWindow) {
+		if (!gControlsToggleInstallWarningLogged) {
+			blog(LOG_WARNING, "[obs-comp-delay] could not add controls button: OBS main window is unavailable");
+			gControlsToggleInstallWarningLogged = true;
+		}
+		return;
+	}
+
+	auto *controlsDock = mainWindow->findChild<QDockWidget *>("controlsDock");
+	if (!controlsDock || !controlsDock->widget()) {
+		if (!gControlsToggleInstallWarningLogged) {
+			blog(LOG_WARNING, "[obs-comp-delay] could not add controls button: OBS controls dock was not found");
+			gControlsToggleInstallWarningLogged = true;
+		}
+		return;
+	}
+
+	auto *buttonsLayout = controlsDock->widget()->findChild<QBoxLayout *>("buttonsVLayout");
+	if (!buttonsLayout) {
+		if (!gControlsToggleInstallWarningLogged) {
+			blog(LOG_WARNING, "[obs-comp-delay] could not add controls button: OBS controls layout was not found");
+			gControlsToggleInstallWarningLogged = true;
+		}
+		return;
+	}
+
+	if (auto *existingButton = controlsDock->widget()->findChild<QPushButton *>(kControlsToggleObjectName)) {
+		gControlsToggleButton = existingButton;
+		updateControlsToggleButton();
+		return;
+	}
+
+	auto *button = new QPushButton(kActivateDelayText, controlsDock->widget());
+	button->setObjectName(kControlsToggleObjectName);
+	button->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+	button->setMinimumWidth(150);
+	button->setAccessibleName("Comp Delay");
+	QObject::connect(button, &QPushButton::clicked, controlsToggleClicked);
+
+	const int insertionIndex = buttonsLayout->count() > 0 ? buttonsLayout->count() - 1 : 0;
+	buttonsLayout->insertWidget(insertionIndex, button);
+	gControlsToggleButton = button;
+	updateControlsToggleButton();
+	blog(LOG_INFO, "[obs-comp-delay] controls dock toggle button installed");
+}
+
+void removeControlsToggleButton()
+{
+	if (gControlsToggleButton) {
+		delete gControlsToggleButton;
+		gControlsToggleButton = nullptr;
+	}
+}
 
 void applyHotkey(void *, obs_hotkey_id, obs_hotkey_t *, bool pressed)
 {
-	if (pressed && gController) {
-		blog(LOG_INFO, "[obs-comp-delay] apply hotkey pressed");
-		gPendingHotkeyAction.store(kApplyConfiguredHotkeyAction);
-	}
+	if (pressed)
+		queueActivateDelay("hotkey");
 }
 
 void goLiveHotkey(void *, obs_hotkey_id, obs_hotkey_t *, bool pressed)
 {
-	if (pressed && gController) {
-		blog(LOG_INFO, "[obs-comp-delay] go-live hotkey pressed");
-		gPendingHotkeyAction.store(kGoLiveHotkeyAction);
-	}
-}
-
-void presetHotkey(void *data, obs_hotkey_id, obs_hotkey_t *, bool pressed)
-{
-	if (!pressed || !gController || !data)
-		return;
-
-	const auto *preset = static_cast<const PresetHotkey *>(data);
-	blog(LOG_INFO, "[obs-comp-delay] preset hotkey pressed: %us", preset->delaySeconds);
-	gPendingHotkeyAction.store(static_cast<int>(preset->delaySeconds));
+	if (pressed)
+		queueDeactivateDelay("hotkey");
 }
 
 void consumePendingHotkeyAction()
@@ -98,21 +182,18 @@ void consumePendingHotkeyAction()
 	if (action == kNoPendingHotkeyAction)
 		return;
 
-	if (action == kApplyConfiguredHotkeyAction) {
+	if (action == kActivateDelayHotkeyAction) {
 		gController->applyConfiguredDelay();
 		return;
 	}
 
-	if (action == kGoLiveHotkeyAction) {
+	if (action == kDeactivateDelayHotkeyAction) {
 		gController->goLive();
 		return;
 	}
 
-	if (action >= 0) {
-		comp_delay::DelaySettings settings = gController->settings();
-		settings.targetDelaySeconds = static_cast<uint32_t>(action);
-		gController->applySettings(settings);
-	}
+	if (action >= 0)
+		blog(LOG_WARNING, "[obs-comp-delay] ignoring unknown queued hotkey action: %d", action);
 }
 
 void showSettingsDialog(void *)
@@ -147,12 +228,6 @@ void saveLoadCallback(obs_data_t *saveData, bool saving, void *)
 			obs_data_array_t *goLive = obs_hotkey_save(gGoLiveHotkey);
 			obs_data_set_array(root, kApplyHotkey, apply);
 			obs_data_set_array(root, kGoLiveHotkey, goLive);
-			for (auto &preset : gPresetHotkeys) {
-				obs_data_array_t *presetData = obs_hotkey_save(preset.id);
-				obs_data_set_array(root, preset.saveKey, presetData);
-				if (presetData)
-					obs_data_array_release(presetData);
-			}
 			if (apply)
 				obs_data_array_release(apply);
 			if (goLive)
@@ -176,13 +251,6 @@ void saveLoadCallback(obs_data_t *saveData, bool saving, void *)
 			obs_hotkey_load(gGoLiveHotkey, goLive);
 			obs_data_array_release(goLive);
 		}
-		for (auto &preset : gPresetHotkeys) {
-			obs_data_array_t *presetData = obs_data_get_array(root, preset.saveKey);
-			if (presetData) {
-				obs_hotkey_load(preset.id, presetData);
-				obs_data_array_release(presetData);
-			}
-		}
 		obs_data_release(root);
 	}
 
@@ -202,10 +270,9 @@ bool obs_module_load(void)
 	gController = std::make_unique<comp_delay::DelayController>();
 	gApplyHotkey = obs_hotkey_register_frontend(kHotkeyApply, kHotkeyApplyDescription, applyHotkey, nullptr);
 	gGoLiveHotkey = obs_hotkey_register_frontend(kHotkeyGoLive, kHotkeyGoLiveDescription, goLiveHotkey, nullptr);
-	for (auto &preset : gPresetHotkeys)
-		preset.id = obs_hotkey_register_frontend(preset.name, preset.description, presetHotkey, &preset);
 	obs_frontend_add_save_callback(saveLoadCallback, nullptr);
 	obs_frontend_add_tools_menu_item("Comp Delay Settings", showSettingsDialog, nullptr);
+	installControlsToggleButton();
 
 	auto *mainWindow = static_cast<QWidget *>(obs_frontend_get_main_window());
 	gRuntimeTimer = new QTimer(mainWindow);
@@ -213,6 +280,9 @@ bool obs_module_load(void)
 		consumePendingHotkeyAction();
 		if (gController)
 			gController->tick();
+		if (!gControlsToggleButton)
+			installControlsToggleButton();
+		updateControlsToggleButton();
 		if (gSettingsDialog)
 			gSettingsDialog->updateStatus();
 	});
@@ -234,13 +304,6 @@ void obs_module_unload(void)
 		obs_hotkey_unregister(gGoLiveHotkey);
 		gGoLiveHotkey = OBS_INVALID_HOTKEY_ID;
 	}
-	for (auto &preset : gPresetHotkeys) {
-		if (preset.id != OBS_INVALID_HOTKEY_ID) {
-			obs_hotkey_unregister(preset.id);
-			preset.id = OBS_INVALID_HOTKEY_ID;
-		}
-	}
-
 	if (gRuntimeTimer) {
 		gRuntimeTimer->stop();
 		delete gRuntimeTimer;
@@ -252,6 +315,7 @@ void obs_module_unload(void)
 		gSettingsDialog = nullptr;
 	}
 
+	removeControlsToggleButton();
 	gController.reset();
 	obs_log(LOG_INFO, "plugin unloaded");
 }

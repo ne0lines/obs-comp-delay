@@ -7,6 +7,7 @@
 #include <obs-data.h>
 
 #include <string>
+#include <unordered_map>
 
 namespace comp_delay {
 
@@ -38,11 +39,14 @@ private:
 	void trimBufferForDelay(uint32_t delaySeconds);
 	void failRuntime(const std::string &message);
 	void switchToTransitionOrFail();
+	void updateTransitionCountdown(uint32_t remainingSeconds);
+	void restoreTransitionCountdownTemplates();
 
 	DelaySettings settings_;
 	DelayStateMachine stateMachine_;
 	SceneCaptureEncoder capture_;
 	std::string lastError_;
+	std::unordered_map<std::string, std::string> transitionCountdownTemplates_;
 	uint64_t delaySceneSwitchNotBeforeNs_ = 0;
 	bool switchedToDelayScene_ = false;
 };

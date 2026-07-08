@@ -1,8 +1,6 @@
 param(
     [string]$PortableObsPath = ".deps\obs-portable-31.1.1",
     [int]$DelaySeconds = 3,
-    [ValidateSet(0, 30, 60, 300)]
-    [int]$RetargetPresetSeconds = 0,
     [ValidateSet("Normal", "SameScene", "MissingSourceScene", "MissingDelayPlayback", "SourceContainsPlayback", "InvalidVideoEncoder", "InvalidAudioEncoder", "MemoryCap", "RuntimeUnderrun")]
     [string]$Scenario = "Normal",
     [switch]$UseMediaSource,
@@ -10,6 +8,7 @@ param(
     [switch]$VerifyAvSync,
     [double]$AvSyncToleranceMs = 50.0,
     [int]$RtmpPort = 19350,
+    [int]$WebSocketPort = 4455,
     [string]$MediaFile = ".deps\obs-comp-delay-av-smoke.mp4"
 )
 
@@ -90,6 +89,7 @@ $configuredMemoryCap = if ($Scenario -eq "MemoryCap") {
 }
 $colorInput = "CD Color Smoke $runId"
 $mediaInput = "CD Media Smoke $runId"
+$countdownInput = "CD Countdown Smoke $runId"
 $sourcePlaybackInput = "Comp Delay Playback Recursive Smoke $runId"
 $delayPlaybackInput = "Comp Delay Playback Smoke $runId"
 
@@ -97,6 +97,7 @@ $websocketConfig = Get-Content $websocketConfigPath -Raw | ConvertFrom-Json
 $websocketConfig.server_enabled = $true
 $websocketConfig.auth_required = $false
 $websocketConfig.alerts_enabled = $false
+$websocketConfig.server_port = $WebSocketPort
 $websocketConfig | ConvertTo-Json -Depth 20 | Set-Content $websocketConfigPath -Encoding UTF8
 
 $sceneJson = Get-Content $scenePath -Raw | ConvertFrom-Json
@@ -128,7 +129,6 @@ $env:CD_SOURCE_SCENE = $sourceScene
 $env:CD_TRANSITION_SCENE = $transitionScene
 $env:CD_DELAY_SCENE = $delayScene
 $env:CD_DELAY_SECONDS = [string]$DelaySeconds
-$env:CD_RETARGET_PRESET_SECONDS = [string]$RetargetPresetSeconds
 $env:CD_SCENARIO = $Scenario
 $env:CD_USE_MEDIA_SOURCE = if ($UseMediaSource) { "1" } else { "0" }
 $env:CD_MEDIA_FILE = $resolvedMediaFile
@@ -136,8 +136,10 @@ $env:CD_VERIFY_STREAMING = if ($VerifyStreaming) { "1" } else { "0" }
 $env:CD_VERIFY_AV_SYNC = if ($VerifyAvSync) { "1" } else { "0" }
 $env:CD_AV_SYNC_TOLERANCE_MS = [string]$AvSyncToleranceMs
 $env:CD_RTMP_PORT = [string]$RtmpPort
+$env:CD_WEBSOCKET_PORT = [string]$WebSocketPort
 $env:CD_COLOR_INPUT = $colorInput
 $env:CD_MEDIA_INPUT = $mediaInput
+$env:CD_COUNTDOWN_INPUT = $countdownInput
 $env:CD_SOURCE_PLAYBACK_INPUT = $sourcePlaybackInput
 $env:CD_DELAY_PLAYBACK_INPUT = $delayPlaybackInput
 
@@ -157,17 +159,18 @@ const sourceScene = process.env.CD_SOURCE_SCENE;
 const transitionScene = process.env.CD_TRANSITION_SCENE;
 const delayScene = process.env.CD_DELAY_SCENE;
 const delaySeconds = Number(process.env.CD_DELAY_SECONDS || '3');
-const retargetPresetSeconds = Number(process.env.CD_RETARGET_PRESET_SECONDS || '0');
 const scenario = process.env.CD_SCENARIO || 'Normal';
 const useMediaSource = process.env.CD_USE_MEDIA_SOURCE === '1';
 const verifyStreaming = process.env.CD_VERIFY_STREAMING === '1';
 const rtmpPort = Number(process.env.CD_RTMP_PORT || '19350');
+const websocketPort = Number(process.env.CD_WEBSOCKET_PORT || '4455');
 const mediaFile = process.env.CD_MEDIA_FILE;
 const colorInput = process.env.CD_COLOR_INPUT;
 const mediaInput = process.env.CD_MEDIA_INPUT;
+const countdownInput = process.env.CD_COUNTDOWN_INPUT;
 const sourcePlaybackInput = process.env.CD_SOURCE_PLAYBACK_INPUT;
 const delayPlaybackInput = process.env.CD_DELAY_PLAYBACK_INPUT;
-const ws = new WebSocket('ws://127.0.0.1:4455');
+const ws = new WebSocket(`ws://127.0.0.1:${websocketPort}`);
 let nextId = 1;
 const pending = new Map();
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -213,6 +216,26 @@ async function createInput(sceneName, inputName, inputKind, inputSettings = {}) 
   }
 }
 
+async function createCountdownTextInput() {
+  const settings = {
+    text: 'Delay starts in %delay_countdown%',
+    font: {face: 'Arial', size: 72, style: 'Regular'},
+    color: 4294967295,
+  };
+  const candidates = ['text_gdiplus_v3', 'text_gdiplus_v2', 'text_gdiplus', 'text_ft2_source_v2', 'text_ft2_source'];
+  const errors = [];
+  for (const inputKind of candidates) {
+    try {
+      await createInput(transitionScene, countdownInput, inputKind, settings);
+      await request('SetInputSettings', {inputName: countdownInput, inputSettings: settings, overlay: false});
+      return inputKind;
+    } catch (error) {
+      errors.push(`${inputKind}: ${error.message}`);
+    }
+  }
+  throw new Error(`could not create countdown text source: ${errors.join('; ')}`);
+}
+
 async function ensureMediaInput(sceneName) {
   const settings = {
     is_local_file: true,
@@ -228,12 +251,23 @@ async function ensureMediaInput(sceneName) {
 
 async function waitForDelayScene(expectedDelaySeconds) {
   const timeline = [];
+  const countdownSamples = [];
   let reachedDelay = false;
   const start = Date.now();
   const timeoutMs = Math.max(10000, (expectedDelaySeconds + 20) * 1000);
   while (Date.now() - start < timeoutMs) {
     await sleep(250);
     const current = await request('GetCurrentProgramScene');
+    if (countdownInput) {
+      const settings = await request('GetInputSettings', {inputName: countdownInput}).catch(() => null);
+      const text = settings?.inputSettings?.text;
+      if (typeof text === 'string') {
+        countdownSamples.push({
+          t: Number(((Date.now() - start) / 1000).toFixed(2)),
+          text,
+        });
+      }
+    }
     timeline.push({t: Number(((Date.now() - start) / 1000).toFixed(2)), scene: current.currentProgramSceneName});
     if (current.currentProgramSceneName === delayScene) {
       reachedDelay = true;
@@ -247,7 +281,9 @@ async function waitForDelayScene(expectedDelaySeconds) {
     reachedAt: reachedDelay && timeline.length ? timeline[timeline.length - 1].t : null,
     samples: timeline.length,
     firstSamples: timeline.slice(0, 5),
-    lastSamples: timeline.slice(-5)
+    lastSamples: timeline.slice(-5),
+    countdownUpdated: countdownSamples.some(item => /^Delay starts in \d+$/.test(item.text)),
+    countdownSamples: countdownSamples.slice(0, 8)
   };
 }
 
@@ -339,6 +375,7 @@ async function main() {
   await createScene(transitionScene);
   await createScene(delayScene);
   await createInput(sourceScene, colorInput, 'color_source_v3', {color: 4278190335, width: 1280, height: 720});
+  const countdownInputKind = await createCountdownTextInput();
   if (useMediaSource) {
     await ensureMediaInput(sourceScene);
   }
@@ -425,15 +462,6 @@ async function main() {
     return;
   }
 
-  let retarget = null;
-  if (retargetPresetSeconds > 0 && initial.reachedDelay) {
-    await triggerHotkeyByName(`obs_comp_delay.apply_${retargetPresetSeconds}s`);
-    retarget = await waitForDelayScene(retargetPresetSeconds);
-    if (verifyStreaming) {
-      stream.checks.push(await assertStreamStillActive('after retarget delay', stream.checks.at(-1)?.outputBytes || 0));
-    }
-  }
-
   await triggerHotkeyByName('obs_comp_delay.go_live').catch(() => {});
   const afterGoLive = await waitForScene(sourceScene);
   if (verifyStreaming) {
@@ -443,16 +471,14 @@ async function main() {
   const result = {
     transitionObserved: initial.transitionObserved,
     reachedDelay: initial.reachedDelay,
+    countdownUpdated: initial.countdownUpdated,
+    countdownInputKind,
     initial,
-    retarget,
     stream,
     afterGoLiveScene: afterGoLive.currentProgramSceneName,
   };
   console.log(JSON.stringify(result, null, 2));
-  if (!result.transitionObserved || !result.reachedDelay || result.afterGoLiveScene !== sourceScene) {
-    process.exitCode = 3;
-  }
-  if (retargetPresetSeconds > 0 && (!retarget?.transitionObserved || !retarget?.reachedDelay)) {
+  if (!result.transitionObserved || !result.reachedDelay || !result.countdownUpdated || result.afterGoLiveScene !== sourceScene) {
     process.exitCode = 3;
   }
   ws.close();

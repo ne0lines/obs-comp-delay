@@ -8,8 +8,10 @@
 #include <obs.h>
 #include <util/platform.h>
 
+#include <cstring>
 #include <cmath>
 #include <sstream>
+#include <unordered_set>
 
 namespace comp_delay {
 
@@ -26,11 +28,108 @@ constexpr const char *kVideoBitrate = "video_bitrate_kbps";
 constexpr const char *kAudioBitrate = "audio_bitrate_kbps";
 constexpr const char *kKeyframeInterval = "keyframe_interval_seconds";
 constexpr const char *kMemoryCap = "memory_cap_bytes";
+constexpr const char *kCountdownToken = "%delay_countdown%";
+constexpr const char *kTextSetting = "text";
+constexpr const char *kGdiTextSourceId = "text_gdiplus";
+constexpr const char *kFreeTypeTextSourceId = "text_ft2_source";
 
 std::string getString(obs_data_t *data, const char *key)
 {
 	const char *value = obs_data_get_string(data, key);
 	return value ? value : "";
+}
+
+bool containsCountdownToken(const std::string &text)
+{
+	return text.find(kCountdownToken) != std::string::npos;
+}
+
+std::string replaceCountdownToken(std::string text, uint32_t remainingSeconds)
+{
+	const std::string replacement = std::to_string(remainingSeconds);
+	size_t pos = 0;
+	while ((pos = text.find(kCountdownToken, pos)) != std::string::npos) {
+		text.replace(pos, std::strlen(kCountdownToken), replacement);
+		pos += replacement.size();
+	}
+	return text;
+}
+
+std::string sourceKey(obs_source_t *source)
+{
+	const char *uuid = obs_source_get_uuid(source);
+	if (uuid && *uuid)
+		return uuid;
+
+	const char *name = obs_source_get_name(source);
+	return name && *name ? name : "";
+}
+
+bool isTextSource(obs_source_t *source)
+{
+	const char *id = obs_source_get_unversioned_id(source);
+	return id && (std::strcmp(id, kGdiTextSourceId) == 0 || std::strcmp(id, kFreeTypeTextSourceId) == 0);
+}
+
+void updateTextSourceCountdown(obs_source_t *source, std::unordered_map<std::string, std::string> &templates,
+			       uint32_t remainingSeconds, bool restore)
+{
+	if (!source || !isTextSource(source))
+		return;
+
+	const std::string key = sourceKey(source);
+	if (key.empty())
+		return;
+
+	obs_data_t *settings = obs_source_get_settings(source);
+	if (!settings)
+		return;
+
+	const std::string currentText = getString(settings, kTextSetting);
+	auto templateIt = templates.find(key);
+	if (containsCountdownToken(currentText)) {
+		templateIt = templates.insert_or_assign(key, currentText).first;
+	}
+
+	if (templateIt == templates.end()) {
+		obs_data_release(settings);
+		return;
+	}
+
+	const std::string nextText = restore ? templateIt->second : replaceCountdownToken(templateIt->second, remainingSeconds);
+	if (currentText != nextText) {
+		obs_data_set_string(settings, kTextSetting, nextText.c_str());
+		obs_source_update(source, settings);
+	}
+
+	obs_data_release(settings);
+}
+
+struct CountdownTextUpdate {
+	std::unordered_map<std::string, std::string> *templates = nullptr;
+	uint32_t remainingSeconds = 0;
+	bool restore = false;
+	std::unordered_set<std::string> visitedScenes;
+};
+
+bool enumCountdownSceneItem(obs_scene_t *, obs_sceneitem_t *item, void *param)
+{
+	auto *update = static_cast<CountdownTextUpdate *>(param);
+	obs_source_t *source = obs_sceneitem_get_source(item);
+	if (!source || !update || !update->templates)
+		return true;
+
+	updateTextSourceCountdown(source, *update->templates, update->remainingSeconds, update->restore);
+
+	obs_scene_t *nestedScene = obs_scene_from_source(source);
+	if (!nestedScene)
+		return true;
+
+	const std::string key = sourceKey(source);
+	if (!key.empty() && update->visitedScenes.insert(key).second)
+		obs_scene_enum_items(nestedScene, enumCountdownSceneItem, update);
+
+	return true;
 }
 
 } // namespace
@@ -39,6 +138,7 @@ DelayController::DelayController() = default;
 
 DelayController::~DelayController()
 {
+	restoreTransitionCountdownTemplates();
 	capture_.stop();
 }
 
@@ -95,6 +195,7 @@ void DelayController::applyConfiguredDelay()
 		return;
 	}
 	blog(LOG_INFO, "[obs-comp-delay] switched to transition scene '%s'", settings_.transitionSceneName.c_str());
+	updateTransitionCountdown(settings_.targetDelaySeconds);
 
 	capture_.start(settings_);
 	if (!capture_.active()) {
@@ -109,6 +210,7 @@ void DelayController::applyConfiguredDelay()
 
 void DelayController::goLive()
 {
+	restoreTransitionCountdownTemplates();
 	capture_.stop();
 	setPlaybackBuffers(nullptr, 0);
 	stateMachine_.goLive();
@@ -124,6 +226,14 @@ void DelayController::tick()
 	capture_.tick();
 
 	const RuntimeState state = stateMachine_.state();
+	if (state == RuntimeState::Filling) {
+		const uint32_t depth = capture_.bufferDepthSeconds();
+		const uint32_t remaining = depth < settings_.targetDelaySeconds ? settings_.targetDelaySeconds - depth : 0;
+		updateTransitionCountdown(remaining);
+	} else {
+		restoreTransitionCountdownTemplates();
+	}
+
 	if ((state == RuntimeState::Filling || state == RuntimeState::Delayed) && !capture_.active()) {
 		failRuntime(capture_.backendStatus().empty() ? "Scene capture stopped unexpectedly" : capture_.backendStatus());
 		return;
@@ -157,6 +267,7 @@ void DelayController::tick()
 				return;
 			}
 			switchedToDelayScene_ = true;
+			restoreTransitionCountdownTemplates();
 		}
 	}
 }
@@ -383,6 +494,7 @@ void DelayController::retargetActiveDelay(uint32_t previousDelaySeconds)
 		failRuntime("Could not switch to transition scene");
 		return;
 	}
+	updateTransitionCountdown(settings_.targetDelaySeconds);
 
 	capture_.updateRetention(settings_);
 
@@ -417,12 +529,52 @@ void DelayController::failRuntime(const std::string &message)
 	switchedToDelayScene_ = false;
 	delaySceneSwitchNotBeforeNs_ = 0;
 	switchToTransitionOrFail();
+	restoreTransitionCountdownTemplates();
 }
 
 void DelayController::switchToTransitionOrFail()
 {
 	if (!settings_.transitionSceneName.empty())
 		obs_ui::switchToSceneByName(settings_.transitionSceneName);
+}
+
+void DelayController::updateTransitionCountdown(uint32_t remainingSeconds)
+{
+	obs_source_t *transitionScene = obs_ui::getSceneRefByName(settings_.transitionSceneName);
+	if (!transitionScene)
+		return;
+
+	obs_scene_t *scene = obs_scene_from_source(transitionScene);
+	if (scene) {
+		CountdownTextUpdate update;
+		update.templates = &transitionCountdownTemplates_;
+		update.remainingSeconds = remainingSeconds;
+		update.visitedScenes.insert(sourceKey(transitionScene));
+		obs_scene_enum_items(scene, enumCountdownSceneItem, &update);
+	}
+
+	obs_source_release(transitionScene);
+}
+
+void DelayController::restoreTransitionCountdownTemplates()
+{
+	if (transitionCountdownTemplates_.empty())
+		return;
+
+	obs_source_t *transitionScene = obs_ui::getSceneRefByName(settings_.transitionSceneName);
+	if (transitionScene) {
+		obs_scene_t *scene = obs_scene_from_source(transitionScene);
+		if (scene) {
+			CountdownTextUpdate update;
+			update.templates = &transitionCountdownTemplates_;
+			update.restore = true;
+			update.visitedScenes.insert(sourceKey(transitionScene));
+			obs_scene_enum_items(scene, enumCountdownSceneItem, &update);
+		}
+		obs_source_release(transitionScene);
+	}
+
+	transitionCountdownTemplates_.clear();
 }
 
 } // namespace comp_delay
