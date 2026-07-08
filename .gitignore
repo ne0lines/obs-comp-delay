@@ -3,6 +3,8 @@
 
 # Except for default project files
 !/.github
+!/assets
+!/assets/**
 !/cmake
 !/data
 !/installer

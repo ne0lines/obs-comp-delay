@@ -1,43 +1,66 @@
 # OBS Comp Delay
 
-OBS Comp Delay is a Windows-first OBS Studio plugin for adding or removing a stream delay while OBS keeps streaming.
+![OBS Comp Delay hero: stream delay protects against stream sniping](assets/readme-hero.png)
 
-The plugin delays one selected source scene. When you activate delay, OBS immediately switches to your `Delay Transition Scene` while the internal buffer fills. When the configured delay time has passed, OBS switches to your delay scene, where the `Comp Delay Playback` source plays the delayed source scene.
+OBS Comp Delay is a Windows-first OBS Studio plugin for adding stream delay while OBS keeps streaming.
+
+It is built for live productions where you may need to protect a game, event, or competition from stream sniping without stopping the broadcast.
 
 ## What It Does
 
-- Adds up to `300` seconds of delay without stopping the OBS streaming output.
-- Uses the delay value configured in `Tools` -> `Comp Delay Settings`.
+- Adds up to `300` seconds of delay.
+- Keeps OBS streaming output running.
+- Delays one selected source scene.
+- Shows a live transition scene while the delay buffer fills.
+- Switches automatically to delayed playback when the configured delay is ready.
 - Adds an `Activate delay` / `Deactivate delay` button to OBS' `Controls` dock.
-- Shows the Controls button in green when delay is inactive and red when delay is active.
-- Provides hotkeys for `Comp Delay: Activate delay`, `Comp Delay: Deactivate delay`, and `Comp Delay: Deactivate after delay`.
-- Lets you choose from video and audio encoders that are available and can be opened on your computer.
-- Supports a `Delay Transition Scene` countdown text token: `%delay_countdown%`.
+- Lets you choose the available video and audio encoders on your computer.
+- Supports a countdown token for OBS text sources: `%delay_countdown%`.
+
+## How It Works
+
+You already have a normal OBS scene that contains the content you want to stream, for example your game or production feed. In OBS Comp Delay, this is your `Source scene`.
+
+When you click `Activate delay`, OBS switches to `Delay Transition Scene` immediately. Viewers see that scene live while the plugin fills the delay buffer.
+
+When the configured delay time has passed and the buffer is ready, OBS switches to your delay scene. That scene contains the `Comp Delay Playback` source, which plays the delayed version of your source scene.
+
+When you click `Deactivate delay`, the plugin can either return live immediately or wait until the current delay has passed.
 
 ## Install
 
-1. Open the repository's GitHub Releases page.
+1. Open the [GitHub Releases page](https://github.com/ne0lines/obs-comp-delay/releases).
 2. Download the latest Windows setup file:
    `obs-comp-delay-<version>-windows-x64-setup.exe`
 3. Close OBS Studio.
 4. Run the setup file.
 5. Start OBS Studio again.
 
-The installer places the plugin DLL and plugin data in the normal OBS Studio plugin folders.
+The installer places the plugin in the normal OBS Studio plugin folders.
 
 ## OBS Setup
 
-You normally already have a source scene, for example your game or program feed. Keep using that as `Source scene`.
+You only need to create two extra scenes. Your normal content scene already exists and will be used as `Source scene`.
 
-Create two additional scenes:
+### 1. Create `Delay Transition Scene`
 
-1. `Delay Transition Scene`
-   This is shown live while the delay buffer fills. Use it for a waiting screen, break screen, sponsor screen, or countdown.
+This scene is shown live while delay is being activated. Use it for a waiting screen, break screen, sponsor screen, or countdown.
 
-2. `Delay scene`
-   This scene must contain a `Comp Delay Playback` source. This is what plays the delayed version of your source scene.
+If you want a countdown, add an OBS text source that contains:
 
-Then open `Tools` -> `Comp Delay Settings` and select:
+```text
+Back in %delay_countdown%
+```
+
+### 2. Create `Delay scene`
+
+This scene plays the delayed output.
+
+Add a source of type `Comp Delay Playback` to this scene.
+
+## Plugin Setup
+
+Open `Tools` -> `Comp Delay Settings` and choose:
 
 - `Source scene`
 - `Delay Transition Scene`
@@ -46,37 +69,51 @@ Then open `Tools` -> `Comp Delay Settings` and select:
 - Audio encoder
 - Delay in seconds
 
-Click `Apply` after changing settings. The button is only needed when the dialog has unapplied changes.
+Click `Apply` after changing settings if the dialog shows unapplied changes.
 
 ## How To Use
 
-1. Set the wanted delay in `Comp Delay Settings`.
-2. Click `Apply` if the settings dialog shows unapplied changes.
-3. Click `Activate delay` in OBS' `Controls` dock, or use your assigned hotkey.
+1. Set the delay in `Comp Delay Settings`.
+2. Click `Apply` if needed.
+3. Click `Activate delay` in OBS' `Controls` dock, or use the hotkey.
 4. OBS switches to `Delay Transition Scene` immediately.
-5. When the configured delay has filled, OBS switches to the delay scene automatically.
-6. Click `Deactivate delay` to return to the source scene live.
-7. In the prompt, choose `Deactivate now`, `Deactivate after XXs`, or `Cancel`.
+5. When the delay buffer is ready, OBS switches to `Delay scene` automatically.
+6. Click `Deactivate delay` when you want to return live.
+7. Choose `Deactivate now`, `Deactivate after XXs`, or `Cancel`.
 
-Changing the delay while it is already active uses the same configured delay workflow. The plugin shows `Delay Transition Scene` while it adjusts the buffer, then returns to delayed playback.
+The Controls button is green when delay is inactive and red when delay is active.
 
 ## Countdown Text
 
-You can add a countdown to `Delay Transition Scene` with a normal OBS text source.
+The countdown works in normal OBS text sources inside `Delay Transition Scene`.
 
-Example text:
+Use this text:
 
 ```text
-Delay starts in %delay_countdown%
+Back in %delay_countdown%
 ```
 
-While `Delay Transition Scene` is active, the plugin replaces `%delay_countdown%` with the remaining buffer-fill time in whole seconds. When the transition is done, the countdown text is kept blank for about five seconds before the original text template is restored.
+While the transition scene is active, the plugin replaces `%delay_countdown%` with the remaining buffer-fill time in whole seconds.
 
-The countdown starts when the plugin activates `Delay Transition Scene` as part of `Activate delay`. The delay scene switch is based on the encoded buffer reaching the configured delay, so the plugin does not switch early if the buffer is not ready yet.
+When the countdown reaches zero, the plugin keeps the text blank for about five seconds before restoring the original template. This prevents viewers from briefly seeing the raw `%delay_countdown%` token.
 
-## Audio
+## Hotkeys
 
-Any audio that should be delayed must be part of, or routed into, the selected source scene. The plugin delays the selected scene, not every arbitrary OBS audio source in the profile.
+OBS Comp Delay adds these hotkeys:
+
+- `Comp Delay: Activate delay`
+- `Comp Delay: Deactivate delay`
+- `Comp Delay: Deactivate after delay`
+
+You can configure them in OBS' normal hotkey settings.
+
+## Important Notes
+
+- The plugin delays the selected source scene, not every arbitrary OBS source.
+- Any audio that should be delayed must be part of, or routed into, the selected source scene.
+- The source scene must not be the same as the transition scene or delay scene.
+- The source scene must not contain the `Comp Delay Playback` source.
+- V1 is Windows-first.
 
 ## FAQ
 
@@ -86,27 +123,25 @@ No. OBS streaming output stays active while the plugin changes scenes and fills 
 
 ### Why Do I Need A Delay Scene?
 
-OBS needs a scene that contains the `Comp Delay Playback` source. That source is responsible for showing and playing the delayed buffer.
+OBS needs a scene that contains the `Comp Delay Playback` source. That source shows and plays the delayed buffer.
 
 ### Why Do I Need A Delay Transition Scene?
 
-`Delay Transition Scene` gives viewers something live to see while the delay buffer is filling. Without it, viewers would see an awkward jump or incomplete delay setup.
-
-### Can I Use Different Fixed Buttons Like 30s, 60s, And 300s?
-
-No. The plugin uses the delay value from `Comp Delay Settings`. This keeps operation simple and avoids activating the wrong delay during a live production.
+`Delay Transition Scene` gives viewers something live to see while the delay buffer is filling.
 
 ### What Is The Difference Between Deactivate Now And Deactivate After XXs?
 
-`Deactivate now` drops the delay buffer immediately and returns to the source scene live. `Deactivate after XXs` schedules deactivation after the current configured delay time.
+`Deactivate now` drops the delay buffer immediately and returns to the source scene live. Viewers will miss the latest delayed seconds.
+
+`Deactivate after XXs` waits until the current configured delay has passed, then returns live.
 
 ### Can I Change The Delay While It Is Active?
 
-Yes. Change the value in `Comp Delay Settings` and click `Apply`. The plugin will use `Delay Transition Scene` while it adjusts.
+Yes. Change the value in `Comp Delay Settings` and click `Apply`. The plugin uses `Delay Transition Scene` while it adjusts the buffer.
 
 ### Does Manually Switching To Delay Transition Scene Start Delay?
 
-No. Delay starts from `Activate delay`, because the plugin also has to start capture and fill the encoded buffer.
+No. Delay starts from 'Activate delay'-button, because the plugin also has to start capture and fill the encoded buffer.
 
 ### What Happens If The Buffer Fails Or A Scene Is Missing?
 
@@ -119,25 +154,3 @@ It is intended for OBS text sources in `Delay Transition Scene`.
 ### Is This Cross-platform?
 
 V1 is Windows-first.
-
-## Developer Notes
-
-Build locally on Windows:
-
-```powershell
-cmake --preset windows-x64
-cmake --build --preset windows-x64
-ctest --test-dir build_x64 -C RelWithDebInfo --output-on-failure
-```
-
-Run the portable OBS smoke test:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File tests\obs-portable-integration-smoke.ps1 -DelaySeconds 3
-```
-
-If another OBS instance already uses obs-websocket port `4455`, run the smoke test on another port:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File tests\obs-portable-integration-smoke.ps1 -DelaySeconds 3 -WebSocketPort 4456
-```
