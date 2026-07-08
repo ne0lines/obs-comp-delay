@@ -55,7 +55,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: obs-comp-delay-windows-x64-setup
-          path: release\obs-comp-delay-*-windows-x64-setup.exe
+          path: release/obs-comp-delay-*-windows-x64-setup.exe
           if-no-files-found: error
 
       - name: Create draft GitHub release
@@ -64,4 +64,5 @@ jobs:
         with:
           draft: true
           prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
-          files: release\obs-comp-delay-*-windows-x64-setup.exe
+          fail_on_unmatched_files: true
+          files: release/obs-comp-delay-*-windows-x64-setup.exe
